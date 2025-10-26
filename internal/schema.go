@@ -11,7 +11,7 @@ type Schema struct {
 func GenerateSchema[S any]() jsonschema.Schema {
 	reflector := jsonschema.Reflector{
 		AllowAdditionalProperties: false,
-		DoNotReference:            true,
+		DoNotReference:            false,
 	}
 
 	jsonSchema := reflector.Reflect(new(S))
