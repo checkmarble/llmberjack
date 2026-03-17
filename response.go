@@ -2,6 +2,7 @@ package llmberjack
 
 import (
 	"encoding/json"
+	"fmt"
 	"iter"
 	"time"
 
@@ -120,6 +121,7 @@ func (r Response[T]) Get(idx int) (T, error) {
 	default:
 		output := new(T)
 
+		fmt.Printf("Candidate text: %s\n", candidate.Text)
 		if err := json.Unmarshal([]byte(candidate.Text), output); err != nil {
 			return *output, errors.Wrap(err, "failed to decode response to schema")
 		}
