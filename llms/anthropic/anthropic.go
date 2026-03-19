@@ -88,6 +88,9 @@ func (p *Anthropic) initVertexAI(adapter internal.Adapter) error {
 		vertex.WithGoogleAuth(p.vertexCtx, p.region, p.project),
 	}
 
+	// NB: I'm not passing the adapter's HTTP client to the anthropic client options, because using vertex AI the SDK does automatic
+	// application default credentials discovery and generates his own http client. There is scope for a future improvement on this.
+
 	client := anthropic.NewClient(opts...)
 	p.client = client
 
@@ -116,7 +119,7 @@ func (p *Anthropic) ChatCompletion(ctx context.Context, adapter internal.Adapter
 
 	opts := internal.CastProviderOptions[RequestOptions](requester.ProviderRequestOptions(p))
 
-	messages, params, err := p.adaptRequest(adapter, requester, *model, opts)
+	messages, params, err := p.adaptRequest(adapter, requester, opts)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not adapt request")
 	}
@@ -198,7 +201,7 @@ type requestParams struct {
 	Thinking   *int
 }
 
-func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, model string, opts RequestOptions) ([]anthropic.MessageParam, *requestParams, error) {
+func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, opts RequestOptions) ([]anthropic.MessageParam, *requestParams, error) {
 	r := requester.ToRequest()
 	messages := make([]anthropic.MessageParam, 0, len(r.Messages))
 
