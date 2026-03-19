@@ -36,7 +36,7 @@ func (*Anthropic) RequestOptionsType() reflect.Type {
 func New(opts ...Opt) (*Anthropic, error) {
 	llm := Anthropic{
 		backend:   BackendAnthropic,
-		region:    "us-central1",
+		region:    "global",
 		vertexCtx: context.Background(),
 	}
 
