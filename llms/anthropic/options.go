@@ -11,6 +11,7 @@ const (
 	BackendVertexAI  Backend = "vertexai"
 
 	BackendVertexAiDefaultMaxTokens = 4096
+	DefaultThinkingBudgetTokens     = 10_000
 )
 
 type Opt func(*Anthropic)

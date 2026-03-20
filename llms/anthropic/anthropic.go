@@ -240,9 +240,16 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 
 	// System messages are handled as separate messages with RoleSystem
 
-	// Add budget tokens for thinking if specified
-	if opts.BudgetTokens != nil && *opts.BudgetTokens > 0 {
+	// Resolve thinking configuration:
+	// - WithThinking(false) explicitly disables thinking
+	// - WithThinking(true) enables with BudgetTokens if set, otherwise default
+	// - BudgetTokens alone (without WithThinking) enables thinking
+	if r.Thinking != nil && !*r.Thinking {
+		// Explicitly disabled, do not set thinking
+	} else if opts.BudgetTokens != nil && *opts.BudgetTokens > 0 {
 		params.Thinking = opts.BudgetTokens
+	} else if r.Thinking != nil && *r.Thinking {
+		params.Thinking = lo.ToPtr(DefaultThinkingBudgetTokens)
 	}
 
 	// Process messages
