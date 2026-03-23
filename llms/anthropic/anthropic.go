@@ -177,7 +177,10 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		if msg.Role == llmberjack.RoleSystem {
 			for _, part := range msg.Parts {
 				if seeker, ok := part.(io.ReadSeeker); ok {
-					seeker.Seek(0, io.SeekStart)
+					_, err := seeker.Seek(0, io.SeekStart)
+					if err != nil {
+						return nil, errors.Wrap(err, "could not seek content part")
+					}
 				}
 				buf, _ := io.ReadAll(part)
 				if systemText != "" {
