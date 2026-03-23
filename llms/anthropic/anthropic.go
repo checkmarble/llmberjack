@@ -318,8 +318,8 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 	} else if opts.BudgetTokens != nil && *opts.BudgetTokens > 0 {
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(*opts.BudgetTokens))
 	} else if r.Thinking != nil && *r.Thinking {
-		adaptative := anthropic.ThinkingConfigAdaptiveParam{Display: "summarized", Type: "adaptive"}
-		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &adaptative}
+		adaptive := anthropic.ThinkingConfigAdaptiveParam{Display: "summarized", Type: "adaptive"}
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &adaptive}
 	}
 
 	return params, nil
