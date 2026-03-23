@@ -119,68 +119,12 @@ func (p *Anthropic) ChatCompletion(ctx context.Context, adapter internal.Adapter
 
 	opts := internal.CastProviderOptions[RequestOptions](requester.ProviderRequestOptions(p))
 
-	messages, params, err := p.adaptRequest(adapter, requester, opts)
+	params, err := p.adaptRequest(adapter, requester, *model, opts)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not adapt request")
 	}
 
-	messageParams := anthropic.MessageNewParams{
-		Model:    *model,
-		Messages: messages,
-	}
-
-	// Add max tokens only if explicitly provided (Vertex AI requires > 0)
-	if r.MaxTokens != nil {
-		messageParams.MaxTokens = int64(*r.MaxTokens)
-	} else if p.backend == BackendVertexAI {
-		messageParams.MaxTokens = BackendVertexAiDefaultMaxTokens // Set a default max tokens for Vertex AI if not provided
-	}
-
-	// Add system message
-	if params.System.Text != "" {
-		messageParams.System = []anthropic.TextBlockParam{params.System}
-	}
-
-	// Add tools
-	if len(params.Tools) > 0 {
-		toolUnions := make([]anthropic.ToolUnionParam, len(params.Tools))
-		for i, tool := range params.Tools {
-			toolUnions[i] = anthropic.ToolUnionParamOfTool(
-				tool.InputSchema,
-				tool.Name,
-			)
-			// Description is already set in tool if provided
-			toolUnions[i].OfTool.Description = tool.Description
-		}
-		messageParams.Tools = toolUnions
-	}
-
-	// Add tool choice
-	if params.ToolChoice != nil {
-		messageParams.ToolChoice = *params.ToolChoice
-	}
-
-	// Add temperature
-	if r.Temperature != nil {
-		messageParams.Temperature = anthropic.Float(*r.Temperature)
-	}
-
-	// Add top_p
-	if r.TopP != nil {
-		messageParams.TopP = anthropic.Float(*r.TopP)
-	}
-
-	// Add top_k
-	if params.TopK != nil {
-		messageParams.TopK = anthropic.Int(int64(*params.TopK))
-	}
-
-	// Add thinking
-	if params.Thinking != nil && *params.Thinking > 0 {
-		messageParams.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(*params.Thinking))
-	}
-
-	response, err := p.client.Messages.New(ctx, messageParams)
+	response, err := p.client.Messages.New(ctx, *params)
 	if err != nil {
 		return nil, errors.Wrap(err, "LLM provider failed to generate content")
 	}
@@ -193,15 +137,7 @@ func (p *Anthropic) ChatCompletion(ctx context.Context, adapter internal.Adapter
 	return responseAdapter, nil
 }
 
-type requestParams struct {
-	System     anthropic.TextBlockParam
-	Tools      []anthropic.ToolParam
-	ToolChoice *anthropic.ToolChoiceUnionParam
-	TopK       *int
-	Thinking   *int
-}
-
-func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, opts RequestOptions) ([]anthropic.MessageParam, *requestParams, error) {
+func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, model string, opts RequestOptions) (*anthropic.MessageNewParams, error) {
 	r := requester.ToRequest()
 	messages := make([]anthropic.MessageParam, 0, len(r.Messages))
 
@@ -209,20 +145,17 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		messages = append(messages, p.history.Load(r.ThreadId)...)
 	}
 
-	params := &requestParams{
-		Tools: make([]anthropic.ToolParam, 0, len(r.Tools)),
-	}
-
-	// Add tools
+	// Build tools
+	tools := make([]anthropic.ToolParam, 0, len(r.Tools))
 	for _, tool := range r.Tools {
 		paramsJson, err := json.Marshal(tool.Parameters)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "failed to encode tool parameters")
+			return nil, errors.Wrap(err, "failed to encode tool parameters")
 		}
 
 		var toolParams map[string]any
 		if err := json.Unmarshal(paramsJson, &toolParams); err != nil {
-			return nil, nil, errors.Wrap(err, "failed to decode tool parameters")
+			return nil, errors.Wrap(err, "failed to decode tool parameters")
 		}
 
 		toolParam := anthropic.ToolParam{
@@ -235,37 +168,44 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		if tool.Description != "" {
 			toolParam.Description = anthropic.String(tool.Description)
 		}
-		params.Tools = append(params.Tools, toolParam)
+		tools = append(tools, toolParam)
 	}
 
-	// System messages are handled as separate messages with RoleSystem
-
-	// Resolve thinking configuration:
-	// - WithThinking(false) explicitly disables thinking
-	// - WithThinking(true) enables with BudgetTokens if set, otherwise default
-	// - BudgetTokens alone (without WithThinking) enables thinking
-	if r.Thinking != nil && !*r.Thinking {
-		// Explicitly disabled, do not set thinking
-	} else if opts.BudgetTokens != nil && *opts.BudgetTokens > 0 {
-		params.Thinking = opts.BudgetTokens
-	} else if r.Thinking != nil && *r.Thinking {
-		params.Thinking = lo.ToPtr(DefaultThinkingBudgetTokens)
+	// Handle system messages
+	var systemText string
+	for _, msg := range r.Messages {
+		if msg.Role == llmberjack.RoleSystem {
+			for _, part := range msg.Parts {
+				if seeker, ok := part.(io.ReadSeeker); ok {
+					seeker.Seek(0, io.SeekStart)
+				}
+				buf, _ := io.ReadAll(part)
+				if systemText != "" {
+					systemText += "\n"
+				}
+				systemText += string(buf)
+			}
+		}
 	}
 
 	// Process messages
 	for _, msg := range r.Messages {
+		if msg.Role == llmberjack.RoleSystem {
+			continue // Already handled above
+		}
+
 		parts := make([]anthropic.ContentBlockParamUnion, 0, len(msg.Parts))
 
 		for _, part := range msg.Parts {
 			if seeker, ok := part.(io.ReadSeeker); ok {
 				if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-					return nil, nil, err
+					return nil, err
 				}
 			}
 
 			buf, err := io.ReadAll(part)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, "could not read content part")
+				return nil, errors.Wrap(err, "could not read content part")
 			}
 
 			switch msg.Type {
@@ -289,13 +229,9 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 				Content: parts,
 			}
 
-		case llmberjack.RoleSystem:
-			// System messages are handled separately in Anthropic SDK
-			continue
-
 		case llmberjack.RoleTool:
 			if msg.Tool == nil {
-				return nil, nil, errors.New("sent a tool response when no tool was invoked")
+				return nil, errors.New("sent a tool response when no tool was invoked")
 			}
 
 			var toolContent string
@@ -303,12 +239,12 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 				if seeker, ok := part.(io.ReadSeeker); ok {
 					_, err := seeker.Seek(0, io.SeekStart)
 					if err != nil {
-						return nil, nil, errors.Wrap(err, "could not seek content part")
+						return nil, errors.Wrap(err, "could not seek content part")
 					}
 				}
 				buf, err := io.ReadAll(part)
 				if err != nil {
-					return nil, nil, errors.Wrap(err, "could not read content part")
+					return nil, errors.Wrap(err, "could not read content part")
 				}
 				toolContent = string(buf)
 			}
@@ -328,7 +264,62 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		messages = append(messages, msgParam)
 	}
 
-	return messages, params, nil
+	// Build the complete MessageNewParams
+	params := &anthropic.MessageNewParams{
+		Model:    model,
+		Messages: messages,
+	}
+
+	// Add system message if present
+	if systemText != "" {
+		params.System = []anthropic.TextBlockParam{
+			{Text: systemText},
+		}
+	}
+
+	// Add tools if present
+	if len(tools) > 0 {
+		toolUnions := make([]anthropic.ToolUnionParam, len(tools))
+		for i, tool := range tools {
+			toolUnions[i] = anthropic.ToolUnionParamOfTool(
+				tool.InputSchema,
+				tool.Name,
+			)
+			toolUnions[i].OfTool.Description = tool.Description
+		}
+		params.Tools = toolUnions
+	}
+
+	// Add max tokens only if explicitly provided (Vertex AI requires > 0)
+	if r.MaxTokens != nil {
+		params.MaxTokens = int64(*r.MaxTokens)
+	} else if p.backend == BackendVertexAI {
+		params.MaxTokens = BackendVertexAiDefaultMaxTokens
+	}
+
+	// Add temperature
+	if r.Temperature != nil {
+		params.Temperature = anthropic.Float(*r.Temperature)
+	}
+
+	// Add top_p
+	if r.TopP != nil {
+		params.TopP = anthropic.Float(*r.TopP)
+	}
+
+	// Resolve thinking configuration
+	if r.Thinking != nil && !*r.Thinking {
+		// Explicitly disabled, do not set thinking
+		disabled := anthropic.NewThinkingConfigDisabledParam()
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfDisabled: &disabled}
+	} else if opts.BudgetTokens != nil && *opts.BudgetTokens > 0 {
+		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(*opts.BudgetTokens))
+	} else if r.Thinking != nil && *r.Thinking {
+		adaptative := anthropic.ThinkingConfigAdaptiveParam{Display: "summarized", Type: "adaptive"}
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &adaptative}
+	}
+
+	return params, nil
 }
 
 func (p *Anthropic) adaptResponse(_ internal.Adapter, response *anthropic.Message, requester llmberjack.Requester) (*llmberjack.InnerResponse, error) {
