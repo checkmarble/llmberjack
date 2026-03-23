@@ -16,10 +16,11 @@ func TestRequestAdapter(t *testing.T) {
 		req := llmberjack.NewUntypedRequest().
 			WithModel("claude-3-5-sonnet-20241022")
 
-		messages, _, err := p.adaptRequest(llm, req, RequestOptions{})
+		params, err := p.adaptRequest(llm, req, "claude-3-5-sonnet-20241022", RequestOptions{})
 
 		assert.Nil(t, err)
-		assert.NotNil(t, messages)
+		assert.NotNil(t, params)
+		assert.NotNil(t, params.Messages)
 	})
 
 	t.Run("with user prompts", func(t *testing.T) {
@@ -28,10 +29,10 @@ func TestRequestAdapter(t *testing.T) {
 			WithText(llmberjack.RoleUser, "user prompt", "user prompt 2").
 			WithTextReader(llmberjack.RoleUser, strings.NewReader("user prompt 3"))
 
-		messages, _, err := p.adaptRequest(llm, req, RequestOptions{})
+		params, err := p.adaptRequest(llm, req, "claude-3-5-sonnet-20241022", RequestOptions{})
 
 		assert.Nil(t, err)
-		assert.Greater(t, len(messages), 0)
+		assert.Greater(t, len(params.Messages), 0)
 	})
 }
 
