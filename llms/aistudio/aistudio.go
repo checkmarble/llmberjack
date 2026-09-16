@@ -3,6 +3,7 @@ package aistudio
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"reflect"
 
@@ -54,7 +55,13 @@ func (p *AiStudio) Init(adapter internal.Adapter) error {
 		cfg.APIKey = p.apiKey
 	case genai.BackendVertexAI:
 		cfg.Project = p.project
+
 		cfg.Location = p.location
+
+		switch p.location {
+		case "eu", "us":
+			cfg.HTTPOptions.BaseURL = fmt.Sprintf("https://aiplatform.%s.rep.googleapis.com", p.location)
+		}
 	}
 
 	client, err := genai.NewClient(context.Background(), &cfg)
