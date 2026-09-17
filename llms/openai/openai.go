@@ -273,6 +273,11 @@ func (p *OpenAi) adaptResponse(_ internal.Adapter, response *openai.ChatCompleti
 		Model:      response.Model,
 		Candidates: make([]llmberjack.ResponseCandidate, len(response.Choices)),
 		Created:    time.Unix(response.Created, 0),
+		Usage: llmberjack.ResponseUsage{
+			InputTokens:     response.Usage.PromptTokens,
+			OutputTokens:    response.Usage.CompletionTokens,
+			CacheReadTokens: response.Usage.PromptTokensDetails.CachedTokens,
+		},
 	}
 
 	for idx, candidate := range response.Choices {

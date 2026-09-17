@@ -272,6 +272,15 @@ func (p *AiStudio) adaptResponse(_ internal.Adapter, response *genai.GenerateCon
 		Candidates: make([]llmberjack.ResponseCandidate, len(response.Candidates)),
 		Created:    response.CreateTime,
 	}
+	if response.UsageMetadata != nil {
+		resp.Usage = llmberjack.ResponseUsage{
+			InputTokens: int64(response.UsageMetadata.PromptTokenCount +
+				response.UsageMetadata.ToolUsePromptTokenCount),
+			OutputTokens: int64(response.UsageMetadata.CandidatesTokenCount +
+				response.UsageMetadata.ThoughtsTokenCount),
+			CacheReadTokens: int64(response.UsageMetadata.CachedContentTokenCount),
+		}
+	}
 
 	for idx, candidate := range response.Candidates {
 		if len(candidate.Content.Parts) == 0 {

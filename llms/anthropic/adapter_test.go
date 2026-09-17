@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	llmberjack "github.com/checkmarble/llmberjack"
 	"github.com/stretchr/testify/assert"
 )
@@ -77,4 +78,27 @@ func TestBackendConfiguration(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, BackendVertexAI, p.backend)
 	})
+}
+
+func TestResponseUsage(t *testing.T) {
+	llm, _ := llmberjack.New()
+	p, _ := New()
+	response := &anthropic.Message{
+		Usage: anthropic.Usage{
+			InputTokens:              20,
+			OutputTokens:             30,
+			CacheCreationInputTokens: 40,
+			CacheReadInputTokens:     50,
+		},
+	}
+
+	resp, err := p.adaptResponse(llm, response, llmberjack.NewUntypedRequest())
+
+	assert.NoError(t, err)
+	assert.Equal(t, llmberjack.ResponseUsage{
+		InputTokens:      110,
+		OutputTokens:     30,
+		CacheWriteTokens: 40,
+		CacheReadTokens:  50,
+	}, resp.Usage)
 }
