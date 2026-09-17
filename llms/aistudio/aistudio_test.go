@@ -49,6 +49,7 @@ func TestGoogleAiRequest(t *testing.T) {
 
 	req := llmberjack.NewRequest[Output]().
 		WithModel("themodel").
+		WithPromptCaching(true).
 		WithInstruction("system text").
 		WithInstructionReader(strings.NewReader("text from reader")).
 		WithText(llmberjack.RoleUser, "user text").
@@ -64,6 +65,7 @@ func TestGoogleAiRequest(t *testing.T) {
 		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
 			body, _ := io.ReadAll(req.Body)
 
+			assert.False(t, gjson.GetBytes(body, "cacheControl").Exists())
 			assert.EqualValues(t, 2, gjson.GetBytes(body, "systemInstruction.parts.#").Int())
 			assert.Equal(t, "system text", gjson.GetBytes(body, "systemInstruction.parts.0.text").String())
 			assert.Equal(t, "text from reader", gjson.GetBytes(body, "systemInstruction.parts.1.text").String())

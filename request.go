@@ -85,6 +85,9 @@ type innerRequest struct {
 	Thinking *bool
 	// ThinkingLevel controls the amount of reasoning used by providers that support it.
 	ThinkingLevel *ThinkingLevel
+	// PromptCaching enables provider-managed prompt caching when explicit opt-in is required.
+	// Providers with implicit caching may ignore this setting.
+	PromptCaching *bool
 
 	ProviderOptions map[reflect.Type]internal.ProviderRequestOptions
 }
@@ -525,6 +528,14 @@ func (r Request[T]) WithThinking(thinking bool) Request[T] {
 // WithThinking(false) takes precedence when both options are set.
 func (r Request[T]) WithThinkingLevel(level ThinkingLevel) Request[T] {
 	r.ThinkingLevel = &level
+
+	return r
+}
+
+// WithPromptCaching enables or disables provider-managed prompt caching.
+// Providers that cache prompts implicitly may ignore this setting.
+func (r Request[T]) WithPromptCaching(enabled bool) Request[T] {
+	r.PromptCaching = &enabled
 
 	return r
 }
