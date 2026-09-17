@@ -98,7 +98,6 @@ func (p *AiStudio) ChatCompletion(ctx context.Context, llm internal.Adapter, req
 	if err != nil {
 		return nil, errors.Wrap(err, "could not adapt request")
 	}
-
 	response, err := p.client.Models.GenerateContent(ctx, *model, contents, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "LLM provider failed to generate content")
@@ -131,15 +130,18 @@ func (p *AiStudio) adaptRequest(_ internal.Adapter, requester llmberjack.Request
 
 	if r.Thinking != nil && !lo.FromPtr(r.Thinking) {
 		cfg.ThinkingConfig = &genai.ThinkingConfig{
-			ThinkingBudget: lo.ToPtr(int32(0)),
+			ThinkingLevel: genai.ThinkingLevelLow,
 		}
-	} else {
+	} else if opts.Thinking != nil || r.ThinkingLevel != nil {
+		thinkingConfig := genai.ThinkingConfig{}
 		if opts.Thinking != nil {
-			cfg.ThinkingConfig = &genai.ThinkingConfig{
-				IncludeThoughts: opts.Thinking.IncludeThoughts,
-				ThinkingBudget:  internal.MaybeIntToInt32(opts.Thinking.Budget),
-			}
+			thinkingConfig.IncludeThoughts = opts.Thinking.IncludeThoughts
+			thinkingConfig.ThinkingLevel = genai.ThinkingLevel(opts.Thinking.ThinkingLevel)
 		}
+		if r.ThinkingLevel != nil {
+			thinkingConfig.ThinkingLevel = adaptThinkingLevel(*r.ThinkingLevel)
+		}
+		cfg.ThinkingConfig = &thinkingConfig
 	}
 
 	if r.ResponseSchema != nil {
@@ -248,6 +250,19 @@ Messages:
 	}
 
 	return contents, &cfg, nil
+}
+
+func adaptThinkingLevel(level llmberjack.ThinkingLevel) genai.ThinkingLevel {
+	switch level {
+	case llmberjack.ThinkingLevelLow:
+		return genai.ThinkingLevelLow
+	case llmberjack.ThinkingLevelMedium:
+		return genai.ThinkingLevelMedium
+	case llmberjack.ThinkingLevelHigh:
+		return genai.ThinkingLevelHigh
+	default:
+		return genai.ThinkingLevelUnspecified
+	}
 }
 
 func (p *AiStudio) adaptResponse(_ internal.Adapter, response *genai.GenerateContentResponse, requester llmberjack.Requester) (*llmberjack.InnerResponse, error) {

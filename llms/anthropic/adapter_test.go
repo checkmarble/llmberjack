@@ -34,6 +34,17 @@ func TestRequestAdapter(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Greater(t, len(params.Messages), 0)
 	})
+
+	t.Run("with thinking level", func(t *testing.T) {
+		req := llmberjack.NewUntypedRequest().
+			WithModel("claude-opus-4-6").
+			WithThinkingLevel(llmberjack.ThinkingLevelHigh)
+
+		params, err := p.adaptRequest(llm, req, "claude-opus-4-6", RequestOptions{})
+
+		assert.Nil(t, err)
+		assert.Equal(t, "high", string(params.OutputConfig.Effort))
+	})
 }
 
 func TestBackendConfiguration(t *testing.T) {
