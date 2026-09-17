@@ -350,6 +350,14 @@ func (p *Anthropic) adaptResponse(_ internal.Adapter, response *anthropic.Messag
 		Id:         response.ID,
 		Model:      response.Model,
 		Candidates: make([]llmberjack.ResponseCandidate, 1),
+		Usage: llmberjack.ResponseUsage{
+			InputTokens: response.Usage.InputTokens +
+				response.Usage.CacheCreationInputTokens +
+				response.Usage.CacheReadInputTokens,
+			OutputTokens:     response.Usage.OutputTokens,
+			CacheWriteTokens: response.Usage.CacheCreationInputTokens,
+			CacheReadTokens:  response.Usage.CacheReadInputTokens,
+		},
 	}
 
 	var finishReason llmberjack.FinishReason

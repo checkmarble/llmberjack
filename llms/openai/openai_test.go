@@ -28,7 +28,15 @@ const openaiResponse = `{
 			}
 		}
 	],
-	"created": 1752423600
+	"created": 1752423600,
+	"usage": {
+		"prompt_tokens": 120,
+		"completion_tokens": 30,
+		"total_tokens": 150,
+		"prompt_tokens_details": {
+			"cached_tokens": 80
+		}
+	}
 }`
 
 func TestOpenAiRequest(t *testing.T) {
@@ -103,6 +111,11 @@ func TestOpenAiRequest(t *testing.T) {
 	assert.Equal(t, "themodel", resp.Model)
 	assert.Equal(t, "theid", resp.Id)
 	assert.WithinDuration(t, time.Date(2025, 7, 13, 16, 20, 0, 0, time.UTC), resp.Created, 0)
+	assert.Equal(t, llmberjack.ResponseUsage{
+		InputTokens:     120,
+		OutputTokens:    30,
+		CacheReadTokens: 80,
+	}, resp.Usage)
 	assert.Equal(t, 1, resp.NumCandidates())
 
 	candidate, err := resp.Candidate(0)

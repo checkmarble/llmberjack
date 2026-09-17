@@ -29,7 +29,15 @@ const aistudioResponse = `{
 			}
 		}
 	],
-	"createTime": "2025-07-13T16:20:00Z"
+	"createTime": "2025-07-13T16:20:00Z",
+	"usageMetadata": {
+		"promptTokenCount": 140,
+		"candidatesTokenCount": 30,
+		"thoughtsTokenCount": 10,
+		"toolUsePromptTokenCount": 5,
+		"cachedContentTokenCount": 90,
+		"totalTokenCount": 185
+	}
 }`
 
 func TestGoogleAiRequest(t *testing.T) {
@@ -106,6 +114,11 @@ func TestGoogleAiRequest(t *testing.T) {
 	assert.Equal(t, "theid", resp.Id)
 	assert.Equal(t, "themodel", resp.Model)
 	assert.WithinDuration(t, time.Date(2025, 7, 13, 16, 20, 0, 0, time.UTC), resp.Created, 0)
+	assert.Equal(t, llmberjack.ResponseUsage{
+		InputTokens:     145,
+		OutputTokens:    40,
+		CacheReadTokens: 90,
+	}, resp.Usage)
 	assert.Equal(t, 1, resp.NumCandidates())
 
 	candidate, err := resp.Candidate(0)

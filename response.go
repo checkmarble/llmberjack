@@ -31,6 +31,16 @@ type InnerResponse struct {
 	Model      string
 	Candidates []ResponseCandidate
 	Created    time.Time
+	Usage      ResponseUsage
+}
+
+// ResponseUsage contains provider-normalized token usage for a response.
+// InputTokens includes tokens read from or written to a prompt cache.
+type ResponseUsage struct {
+	InputTokens      int64
+	OutputTokens     int64
+	CacheWriteTokens int64
+	CacheReadTokens  int64
 }
 
 // ResponseCandidate represent a candidate response from a  provider.
