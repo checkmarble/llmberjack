@@ -83,9 +83,20 @@ type innerRequest struct {
 
 	// Thinking is a flag to enable/disable thinking. If not provided, the provider will use its default behavior.
 	Thinking *bool
+	// ThinkingLevel controls the amount of reasoning used by providers that support it.
+	ThinkingLevel *ThinkingLevel
 
 	ProviderOptions map[reflect.Type]internal.ProviderRequestOptions
 }
+
+// ThinkingLevel is a portable reasoning effort level.
+type ThinkingLevel string
+
+const (
+	ThinkingLevelLow    ThinkingLevel = "low"
+	ThinkingLevelMedium ThinkingLevel = "medium"
+	ThinkingLevelHigh   ThinkingLevel = "high"
+)
 
 // Request represent a request to be sent the a provider, in the context of the
 // current conversation.
@@ -506,6 +517,14 @@ func (r Request[T]) WithTopP(topp float64) Request[T] {
 
 func (r Request[T]) WithThinking(thinking bool) Request[T] {
 	r.Thinking = &thinking
+
+	return r
+}
+
+// WithThinkingLevel sets the reasoning effort for providers that support it.
+// WithThinking(false) takes precedence when both options are set.
+func (r Request[T]) WithThinkingLevel(level ThinkingLevel) Request[T] {
+	r.ThinkingLevel = &level
 
 	return r
 }

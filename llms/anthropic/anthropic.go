@@ -315,6 +315,8 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		// Explicitly disabled, do not set thinking
 		disabled := anthropic.NewThinkingConfigDisabledParam()
 		params.Thinking = anthropic.ThinkingConfigParamUnion{OfDisabled: &disabled}
+	} else if r.ThinkingLevel != nil {
+		params.OutputConfig.Effort = adaptThinkingLevel(*r.ThinkingLevel)
 	} else if opts.BudgetTokens != nil && *opts.BudgetTokens > 0 {
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(*opts.BudgetTokens))
 	} else if r.Thinking != nil && *r.Thinking {
@@ -323,6 +325,19 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 	}
 
 	return params, nil
+}
+
+func adaptThinkingLevel(level llmberjack.ThinkingLevel) anthropic.OutputConfigEffort {
+	switch level {
+	case llmberjack.ThinkingLevelLow:
+		return anthropic.OutputConfigEffortLow
+	case llmberjack.ThinkingLevelMedium:
+		return anthropic.OutputConfigEffortMedium
+	case llmberjack.ThinkingLevelHigh:
+		return anthropic.OutputConfigEffortHigh
+	default:
+		return ""
+	}
 }
 
 func (p *Anthropic) adaptResponse(_ internal.Adapter, response *anthropic.Message, requester llmberjack.Requester) (*llmberjack.InnerResponse, error) {

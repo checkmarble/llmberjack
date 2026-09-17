@@ -131,6 +131,9 @@ func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Request
 	if r.TopP != nil {
 		cfg.TopP = openai.Float(*r.TopP)
 	}
+	if r.ThinkingLevel != nil && (r.Thinking == nil || *r.Thinking) {
+		cfg.ReasoningEffort = adaptThinkingLevel(*r.ThinkingLevel)
+	}
 
 	if r.ResponseSchema != nil {
 		cfg.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
@@ -249,6 +252,19 @@ func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Request
 	}
 
 	return &cfg, nil
+}
+
+func adaptThinkingLevel(level llmberjack.ThinkingLevel) openai.ReasoningEffort {
+	switch level {
+	case llmberjack.ThinkingLevelLow:
+		return openai.ReasoningEffortLow
+	case llmberjack.ThinkingLevelMedium:
+		return openai.ReasoningEffortMedium
+	case llmberjack.ThinkingLevelHigh:
+		return openai.ReasoningEffortHigh
+	default:
+		return ""
+	}
 }
 
 func (p *OpenAi) adaptResponse(_ internal.Adapter, response *openai.ChatCompletion, requester llmberjack.Requester) (*llmberjack.InnerResponse, error) {

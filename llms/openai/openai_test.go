@@ -47,6 +47,7 @@ func TestOpenAiRequest(t *testing.T) {
 
 	req := llmberjack.NewRequest[Output]().
 		WithModel("themodel").
+		WithThinkingLevel(llmberjack.ThinkingLevelLow).
 		WithInstruction("system text").
 		WithInstructionReader(strings.NewReader("text from reader")).
 		WithText(llmberjack.RoleUser, "user text").
@@ -62,6 +63,7 @@ func TestOpenAiRequest(t *testing.T) {
 			body, _ := io.ReadAll(req.Body)
 
 			assert.Equal(t, "themodel", gjson.GetBytes(body, "model").String())
+			assert.Equal(t, "low", gjson.GetBytes(body, "reasoning_effort").String())
 
 			assert.EqualValues(t, 4, gjson.GetBytes(body, "messages.#").Int())
 			assert.Equal(t, "system text", gjson.GetBytes(body, "messages.0.content.0.text").String())
