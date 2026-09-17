@@ -272,6 +272,9 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		Model:    model,
 		Messages: messages,
 	}
+	if r.PromptCaching != nil && *r.PromptCaching {
+		params.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
 
 	// Add system message if present
 	if systemText != "" {
@@ -316,6 +319,8 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		disabled := anthropic.NewThinkingConfigDisabledParam()
 		params.Thinking = anthropic.ThinkingConfigParamUnion{OfDisabled: &disabled}
 	} else if r.ThinkingLevel != nil {
+		adaptive := anthropic.ThinkingConfigAdaptiveParam{Display: "summarized", Type: "adaptive"}
+		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &adaptive}
 		params.OutputConfig.Effort = adaptThinkingLevel(*r.ThinkingLevel)
 	} else if opts.BudgetTokens != nil && *opts.BudgetTokens > 0 {
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(int64(*opts.BudgetTokens))

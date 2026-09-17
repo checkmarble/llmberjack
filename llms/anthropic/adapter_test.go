@@ -43,7 +43,19 @@ func TestRequestAdapter(t *testing.T) {
 		params, err := p.adaptRequest(llm, req, "claude-opus-4-6", RequestOptions{})
 
 		assert.Nil(t, err)
+		assert.NotNil(t, params.Thinking.OfAdaptive)
 		assert.Equal(t, "high", string(params.OutputConfig.Effort))
+	})
+
+	t.Run("with prompt caching", func(t *testing.T) {
+		req := llmberjack.NewUntypedRequest().
+			WithModel("claude-opus-4-6").
+			WithPromptCaching(true)
+
+		params, err := p.adaptRequest(llm, req, "claude-opus-4-6", RequestOptions{})
+
+		assert.Nil(t, err)
+		assert.Equal(t, "ephemeral", string(params.CacheControl.Type))
 	})
 }
 
