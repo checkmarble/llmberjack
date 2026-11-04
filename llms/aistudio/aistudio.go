@@ -144,15 +144,10 @@ func (p *AiStudio) adaptRequest(_ internal.Adapter, requester llmberjack.Request
 		cfg.ThinkingConfig = &thinkingConfig
 	}
 
-	if r.ResponseSchema != nil {
-		r.ResponseSchema.Description = r.SchemaDescription
-
-		if r.SchemaOverride != nil {
-			r.SchemaOverride.Description = r.SchemaDescription
-		}
-
+	if schema := lo.CoalesceOrEmpty(r.SchemaOverride, r.ResponseSchema); schema != nil {
+		schema.Description = r.SchemaDescription
 		cfg.ResponseMIMEType = "application/json"
-		cfg.ResponseJsonSchema = lo.CoalesceOrEmpty(r.SchemaOverride, r.ResponseSchema)
+		cfg.ResponseJsonSchema = schema
 	}
 
 	cfg.Tools = append(cfg.Tools, lo.MapToSlice(r.Tools, func(_ string, t internal.Tool) *genai.Tool {
