@@ -167,8 +167,33 @@ func (p *AiStudio) adaptRequest(_ internal.Adapter, requester llmberjack.Request
 		}
 	})...)
 
+	// Gemini requires all function responses answering a single model turn
+	// (which may contain several parallel function calls) to be sent as parts
+	// of a single content. Consecutive tool response messages are therefore
+	// accumulated here and only emitted (and saved to history) once a non-tool
+	// message is encountered, or at the end of the request messages.
+	var pendingToolResponses *genai.Content
+
+	flushToolResponses := func() {
+		if pendingToolResponses == nil {
+			return
+		}
+
+		contents = append(contents, pendingToolResponses)
+
+		if r.ThreadId != nil && !r.SkipSaveInput {
+			p.history.Save(r.ThreadId, pendingToolResponses)
+		}
+
+		pendingToolResponses = nil
+	}
+
 Messages:
 	for _, msg := range r.Messages {
+		if msg.Role != llmberjack.RoleTool {
+			flushToolResponses()
+		}
+
 		parts := make([]*genai.Part, 0, len(msg.Parts))
 
 		for _, part := range msg.Parts {
@@ -201,24 +226,20 @@ Messages:
 				return nil, nil, errors.New("sent a tool response when no tool was invoked")
 			}
 
-			msg := &genai.Content{
-				Role: role,
-				Parts: []*genai.Part{
-					{
-						FunctionResponse: &genai.FunctionResponse{
-							ID:       msg.Tool.Id,
-							Name:     msg.Tool.Name,
-							Response: map[string]any{"output": parts[0]},
-						},
-					},
+			if pendingToolResponses == nil {
+				pendingToolResponses = &genai.Content{
+					Role:  role,
+					Parts: make([]*genai.Part, 0, 1),
+				}
+			}
+
+			pendingToolResponses.Parts = append(pendingToolResponses.Parts, &genai.Part{
+				FunctionResponse: &genai.FunctionResponse{
+					ID:       msg.Tool.Id,
+					Name:     msg.Tool.Name,
+					Response: map[string]any{"output": parts[0]},
 				},
-			}
-
-			contents = append(contents, msg)
-
-			if r.ThreadId != nil && !r.SkipSaveInput {
-				p.history.Save(r.ThreadId, msg)
-			}
+			})
 
 			continue Messages
 		case llmberjack.RoleSystem:
@@ -248,6 +269,8 @@ Messages:
 
 		contents = append(contents, content)
 	}
+
+	flushToolResponses()
 
 	return contents, &cfg, nil
 }
