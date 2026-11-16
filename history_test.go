@@ -66,8 +66,29 @@ func TestCopyCloseThread(t *testing.T) {
 
 	t2 := h.Copy(t1)
 
-	h.Save(t2, 3)
+	assert.NotNil(t, t2)
+	assert.NotSame(t, t1, t2)
+	assert.Equal(t, []int{1, 2}, h.Load(t2))
 
-	assert.Len(t, h.Load(t1), 2)
-	assert.Len(t, h.Load(t2), 1)
+	h.Save(t2, 3)
+	h.Save(t1, 4)
+
+	assert.Equal(t, []int{1, 2, 4}, h.Load(t1))
+	assert.Equal(t, []int{1, 2, 3}, h.Load(t2))
+
+	h.Close(t2)
+
+	assert.Len(t, h.Load(t2), 0)
+	assert.Equal(t, []int{1, 2, 4}, h.Load(t1))
+}
+
+func TestCopyUnknownThread(t *testing.T) {
+	h := History[int]{}
+
+	assert.Nil(t, h.Copy(nil))
+	assert.Nil(t, h.Copy(&ThreadId{}))
+
+	h.Save(&ThreadId{}, 1)
+
+	assert.Nil(t, h.Copy(&ThreadId{}))
 }

@@ -72,7 +72,7 @@ func (h *History[T]) Copy(threadId *ThreadId) *ThreadId {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	if _, ok := h.history[threadId]; ok {
+	if _, ok := h.history[threadId]; !ok {
 		return nil
 	}
 
