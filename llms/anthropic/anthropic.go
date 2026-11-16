@@ -9,6 +9,7 @@ import (
 	llmberjack "github.com/checkmarble/llmberjack"
 	"github.com/checkmarble/llmberjack/internal"
 	"github.com/cockroachdb/errors"
+	"github.com/invopop/jsonschema"
 	"github.com/samber/lo"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -148,22 +149,14 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 	// Build tools
 	tools := make([]anthropic.ToolParam, 0, len(r.Tools))
 	for _, tool := range r.Tools {
-		paramsJson, err := json.Marshal(tool.Parameters)
+		inputSchema, err := adaptToolInputSchema(tool.Parameters)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to encode tool parameters")
-		}
-
-		var toolParams map[string]any
-		if err := json.Unmarshal(paramsJson, &toolParams); err != nil {
-			return nil, errors.Wrap(err, "failed to decode tool parameters")
+			return nil, errors.Wrapf(err, "failed to adapt parameters of tool '%s'", tool.Name)
 		}
 
 		toolParam := anthropic.ToolParam{
-			Name: tool.Name,
-			InputSchema: anthropic.ToolInputSchemaParam{
-				Type:       "object",
-				Properties: toolParams,
-			},
+			Name:        tool.Name,
+			InputSchema: inputSchema,
 		}
 		if tool.Description != "" {
 			toolParam.Description = anthropic.String(tool.Description)
@@ -191,10 +184,39 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		}
 	}
 
+	// Anthropic expects all the tool_result blocks answering an assistant turn
+	// (which may contain several parallel tool_use blocks) to be in the single
+	// user message following it. Consecutive tool response messages are
+	// therefore accumulated here, and only emitted (and saved to history) once
+	// another message is encountered, or at the end of the request messages.
+	var pendingToolResults []anthropic.ContentBlockParamUnion
+
+	flushToolResults := func() {
+		if len(pendingToolResults) == 0 {
+			return
+		}
+
+		msgParam := anthropic.MessageParam{
+			Role:    anthropic.MessageParamRoleUser,
+			Content: pendingToolResults,
+		}
+
+		if r.ThreadId != nil && !r.SkipSaveInput {
+			p.history.Save(r.ThreadId, msgParam)
+		}
+
+		messages = append(messages, msgParam)
+		pendingToolResults = nil
+	}
+
 	// Process messages
 	for _, msg := range r.Messages {
 		if msg.Role == llmberjack.RoleSystem {
 			continue // Already handled above
+		}
+
+		if msg.Role != llmberjack.RoleTool {
+			flushToolResults()
 		}
 
 		parts := make([]anthropic.ContentBlockParamUnion, 0, len(msg.Parts))
@@ -252,12 +274,9 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 				toolContent = string(buf)
 			}
 
-			msgParam = anthropic.MessageParam{
-				Role: anthropic.MessageParamRoleUser,
-				Content: []anthropic.ContentBlockParamUnion{
-					anthropic.NewToolResultBlock(msg.Tool.Id, toolContent, false),
-				},
-			}
+			pendingToolResults = append(pendingToolResults, anthropic.NewToolResultBlock(msg.Tool.Id, toolContent, false))
+
+			continue
 		}
 
 		if r.ThreadId != nil && !r.SkipSaveInput {
@@ -266,6 +285,8 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 
 		messages = append(messages, msgParam)
 	}
+
+	flushToolResults()
 
 	// Build the complete MessageNewParams
 	params := &anthropic.MessageNewParams{
@@ -330,6 +351,53 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 	}
 
 	return params, nil
+}
+
+// adaptToolInputSchema converts the JSON schema generated for a tool's
+// arguments into Anthropic's tool input schema.
+//
+// The generated schema is a full object schema ({"$schema", "type",
+// "properties", "required", ...}), so its "properties" and "required" are
+// mapped to the matching fields of the input schema. Other keywords (such as
+// "additionalProperties" or "$defs" referenced by nested types) are kept at the
+// root of the input schema, and "$schema" is dropped since Anthropic rejects
+// it.
+func adaptToolInputSchema(schema jsonschema.Schema) (anthropic.ToolInputSchemaParam, error) {
+	schemaJson, err := json.Marshal(schema)
+	if err != nil {
+		return anthropic.ToolInputSchemaParam{}, errors.Wrap(err, "failed to encode tool parameters")
+	}
+
+	var fields map[string]any
+	if err := json.Unmarshal(schemaJson, &fields); err != nil {
+		return anthropic.ToolInputSchemaParam{}, errors.Wrap(err, "failed to decode tool parameters")
+	}
+
+	inputSchema := anthropic.ToolInputSchemaParam{
+		Type:       "object",
+		Properties: fields["properties"],
+	}
+
+	if required, ok := fields["required"].([]any); ok {
+		inputSchema.Required = make([]string, 0, len(required))
+
+		for _, field := range required {
+			if name, ok := field.(string); ok {
+				inputSchema.Required = append(inputSchema.Required, name)
+			}
+		}
+	}
+
+	delete(fields, "$schema")
+	delete(fields, "type")
+	delete(fields, "properties")
+	delete(fields, "required")
+
+	if len(fields) > 0 {
+		inputSchema.ExtraFields = fields
+	}
+
+	return inputSchema, nil
 }
 
 func adaptThinkingLevel(level llmberjack.ThinkingLevel) anthropic.OutputConfigEffort {
@@ -401,12 +469,11 @@ func (p *Anthropic) adaptResponse(_ internal.Adapter, response *anthropic.Messag
 			req := requester.ToRequest()
 
 			if req.ThreadId != nil && !req.SkipSaveOutput {
-				msg := anthropic.MessageParam{
-					Role:    anthropic.MessageParamRoleAssistant,
-					Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(text)},
-				}
-
-				p.history.Save(req.ThreadId, msg)
+				// Save the whole assistant message, not only its text: the
+				// tool_use blocks must be in the history for the following
+				// tool_result blocks to be accepted, and thinking blocks (with
+				// their signatures) must be sent back when using tools.
+				p.history.Save(req.ThreadId, response.ToParam())
 			}
 		},
 	}
