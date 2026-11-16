@@ -227,10 +227,7 @@ Messages:
 			}
 
 			if pendingToolResponses == nil {
-				pendingToolResponses = &genai.Content{
-					Role:  role,
-					Parts: make([]*genai.Part, 0, 1),
-				}
+				pendingToolResponses = &genai.Content{Role: role}
 			}
 
 			pendingToolResponses.Parts = append(pendingToolResponses.Parts, &genai.Part{
