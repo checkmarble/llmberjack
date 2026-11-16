@@ -190,6 +190,9 @@ func (p *AiStudio) adaptRequest(_ internal.Adapter, requester llmberjack.Request
 
 Messages:
 	for _, msg := range r.Messages {
+		// A non-tool message ends the current batch of tool responses: emit it
+		// now so it keeps its place before this message, and so that a later
+		// batch starts a new content instead of being merged into this one.
 		if msg.Role != llmberjack.RoleTool {
 			flushToolResponses()
 		}
