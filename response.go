@@ -52,7 +52,9 @@ type ResponseCandidate struct {
 	Thoughts     string
 
 	// SelectCandidate is a callback that is called when a candidate is
-	// "selected" (when the conversation will continue from it).
+	// "selected" (when the conversation will continue from it). On responses
+	// returned by Request.Do, it only has an effect the first time it is
+	// called.
 	SelectCandidate func()
 }
 

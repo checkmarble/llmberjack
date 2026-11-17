@@ -17,7 +17,7 @@ func TestRequestAdapter(t *testing.T) {
 		req := llmberjack.NewUntypedRequest().
 			WithModel("claude-3-5-sonnet-20241022")
 
-		params, err := p.adaptRequest(llm, req, "claude-3-5-sonnet-20241022", RequestOptions{})
+		params, _, err := p.adaptRequest(llm, req, "claude-3-5-sonnet-20241022", RequestOptions{})
 
 		assert.Nil(t, err)
 		assert.NotNil(t, params)
@@ -30,7 +30,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithText(llmberjack.RoleUser, "user prompt", "user prompt 2").
 			WithTextReader(llmberjack.RoleUser, strings.NewReader("user prompt 3"))
 
-		params, err := p.adaptRequest(llm, req, "claude-3-5-sonnet-20241022", RequestOptions{})
+		params, _, err := p.adaptRequest(llm, req, "claude-3-5-sonnet-20241022", RequestOptions{})
 
 		assert.Nil(t, err)
 		assert.Greater(t, len(params.Messages), 0)
@@ -41,7 +41,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithModel("claude-opus-4-6").
 			WithThinkingLevel(llmberjack.ThinkingLevelHigh)
 
-		params, err := p.adaptRequest(llm, req, "claude-opus-4-6", RequestOptions{})
+		params, _, err := p.adaptRequest(llm, req, "claude-opus-4-6", RequestOptions{})
 
 		assert.Nil(t, err)
 		assert.NotNil(t, params.Thinking.OfAdaptive)
@@ -53,7 +53,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithModel("claude-opus-4-6").
 			WithPromptCaching(true)
 
-		params, err := p.adaptRequest(llm, req, "claude-opus-4-6", RequestOptions{})
+		params, _, err := p.adaptRequest(llm, req, "claude-opus-4-6", RequestOptions{})
 
 		assert.Nil(t, err)
 		assert.Equal(t, "ephemeral", string(params.CacheControl.Type))

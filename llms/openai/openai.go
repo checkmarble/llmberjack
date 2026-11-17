@@ -71,7 +71,7 @@ func (p *OpenAi) CloseThread(threadId *llmberjack.ThreadId) {
 }
 
 func (p *OpenAi) ChatCompletion(ctx context.Context, llm internal.Adapter, requester llmberjack.Requester) (*llmberjack.InnerResponse, error) {
-	cfg, err := p.adaptRequest(llm, requester)
+	cfg, turn, err := p.adaptRequest(llm, requester)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not adapt request")
 	}
@@ -98,12 +98,24 @@ func (p *OpenAi) ChatCompletion(ctx context.Context, llm internal.Adapter, reque
 		}
 	}
 
+	// The input messages of this turn are only committed to the thread once
+	// the provider call succeeded, so a failed call can be retried in the same
+	// thread without duplicating them, and a failed first turn does not leave
+	// an orphan thread behind.
+	if r := requester.ToRequest(); r.ThreadId != nil && !r.SkipSaveInput {
+		p.history.SaveAll(r.ThreadId, turn...)
+	}
+
 	return responseAdapter, nil
 }
 
-func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Requester) (*openai.ChatCompletionNewParams, error) {
+// adaptRequest builds the provider request. Alongside the request (thread
+// history included), it returns the messages specific to this turn, to be
+// committed to the thread history if, and only if, the request succeeds.
+func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Requester) (*openai.ChatCompletionNewParams, []openai.ChatCompletionMessageParamUnion, error) {
 	r := requester.ToRequest()
 	contents := make([]openai.ChatCompletionMessageParamUnion, 0, len(r.Messages))
+	turn := make([]openai.ChatCompletionMessageParamUnion, 0, len(r.Messages))
 
 	if r.ThreadId != nil {
 		contents = append(contents, p.history.Load(r.ThreadId)...)
@@ -111,7 +123,7 @@ func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Request
 
 	model, ok := lo.Coalesce(r.Model, p.model, lo.ToPtr(llm.DefaultModel()))
 	if !ok {
-		return nil, errors.New("no model was configured")
+		return nil, nil, errors.New("no model was configured")
 	}
 
 	cfg := openai.ChatCompletionNewParams{
@@ -151,13 +163,13 @@ func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Request
 	for _, tool := range r.Tools {
 		paramsJson, err := json.Marshal(tool.Parameters)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to encode tool parameters")
+			return nil, nil, errors.Wrap(err, "failed to encode tool parameters")
 		}
 
 		var params map[string]any
 
 		if err := json.Unmarshal(paramsJson, &params); err != nil {
-			return nil, errors.Wrap(err, "failed to encode tool parameters")
+			return nil, nil, errors.Wrap(err, "failed to encode tool parameters")
 		}
 
 		cfg.Tools = append(cfg.Tools, openai.ChatCompletionToolParam{
@@ -176,13 +188,13 @@ func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Request
 		for _, part := range msg.Parts {
 			if seeker, ok := part.(io.ReadSeeker); ok {
 				if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 
 			buf, err := io.ReadAll(part)
 			if err != nil {
-				return nil, errors.Wrap(err, "could not read content part")
+				return nil, nil, errors.Wrap(err, "could not read content part")
 			}
 
 			switch msg.Type {
@@ -244,14 +256,11 @@ func (p *OpenAi) adaptRequest(llm internal.Adapter, requester llmberjack.Request
 			}
 		}
 
-		if r.ThreadId != nil && !r.SkipSaveInput {
-			p.history.Save(r.ThreadId, content)
-		}
-
 		cfg.Messages = append(cfg.Messages, content)
+		turn = append(turn, content)
 	}
 
-	return &cfg, nil
+	return &cfg, turn, nil
 }
 
 func adaptThinkingLevel(level llmberjack.ThinkingLevel) openai.ReasoningEffort {

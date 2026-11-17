@@ -124,6 +124,8 @@ When using thread, by default, both inputs and outputs are saved. To opt out of 
 
 Note that starting a response from a previous candidate automatically adds that response to the relevant thread history.
 
+A request's inputs are only added to the thread history once the provider call succeeded: if a request fails, the thread history is left as it was, so the same request can safely be retried in that thread, and a request failing to create a thread does not leave one behind. Selecting the same candidate several times (for example when retrying a request built with `FromCandidate()`) only adds it to the history once.
+
 Threads should be closed after you are done using them to clean associated resources. We recomment deferring a call to `(*ThreadId).Close()` after you create it. If you do not, threads will live on until the whole adapter is garbage collected.
 
 #### Chaining

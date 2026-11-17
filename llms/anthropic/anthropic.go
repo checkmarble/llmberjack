@@ -119,7 +119,7 @@ func (p *Anthropic) ChatCompletion(ctx context.Context, adapter internal.Adapter
 
 	opts := internal.CastProviderOptions[RequestOptions](requester.ProviderRequestOptions(p))
 
-	params, err := p.adaptRequest(adapter, requester, *model, opts)
+	params, turn, err := p.adaptRequest(adapter, requester, *model, opts)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not adapt request")
 	}
@@ -134,12 +134,24 @@ func (p *Anthropic) ChatCompletion(ctx context.Context, adapter internal.Adapter
 		return nil, errors.Wrap(err, "could not adapt response")
 	}
 
+	// The input messages of this turn are only committed to the thread once
+	// the provider call succeeded, so a failed call can be retried in the same
+	// thread without duplicating them, and a failed first turn does not leave
+	// an orphan thread behind.
+	if r.ThreadId != nil && !r.SkipSaveInput {
+		p.history.SaveAll(r.ThreadId, turn...)
+	}
+
 	return responseAdapter, nil
 }
 
-func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, model string, opts RequestOptions) (*anthropic.MessageNewParams, error) {
+// adaptRequest builds the provider request. Alongside the request (thread
+// history included), it returns the messages specific to this turn, to be
+// committed to the thread history if, and only if, the request succeeds.
+func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, model string, opts RequestOptions) (*anthropic.MessageNewParams, []anthropic.MessageParam, error) {
 	r := requester.ToRequest()
 	messages := make([]anthropic.MessageParam, 0, len(r.Messages))
+	turn := make([]anthropic.MessageParam, 0, len(r.Messages))
 
 	if r.ThreadId != nil {
 		messages = append(messages, p.history.Load(r.ThreadId)...)
@@ -150,12 +162,12 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 	for _, tool := range r.Tools {
 		paramsJson, err := json.Marshal(tool.Parameters)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to encode tool parameters")
+			return nil, nil, errors.Wrap(err, "failed to encode tool parameters")
 		}
 
 		var toolParams map[string]any
 		if err := json.Unmarshal(paramsJson, &toolParams); err != nil {
-			return nil, errors.Wrap(err, "failed to decode tool parameters")
+			return nil, nil, errors.Wrap(err, "failed to decode tool parameters")
 		}
 
 		toolParam := anthropic.ToolParam{
@@ -179,7 +191,7 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 				if seeker, ok := part.(io.ReadSeeker); ok {
 					_, err := seeker.Seek(0, io.SeekStart)
 					if err != nil {
-						return nil, errors.Wrap(err, "could not seek content part")
+						return nil, nil, errors.Wrap(err, "could not seek content part")
 					}
 				}
 				buf, _ := io.ReadAll(part)
@@ -202,13 +214,13 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		for _, part := range msg.Parts {
 			if seeker, ok := part.(io.ReadSeeker); ok {
 				if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 
 			buf, err := io.ReadAll(part)
 			if err != nil {
-				return nil, errors.Wrap(err, "could not read content part")
+				return nil, nil, errors.Wrap(err, "could not read content part")
 			}
 
 			switch msg.Type {
@@ -234,7 +246,7 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 
 		case llmberjack.RoleTool:
 			if msg.Tool == nil {
-				return nil, errors.New("sent a tool response when no tool was invoked")
+				return nil, nil, errors.New("sent a tool response when no tool was invoked")
 			}
 
 			var toolContent string
@@ -242,12 +254,12 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 				if seeker, ok := part.(io.ReadSeeker); ok {
 					_, err := seeker.Seek(0, io.SeekStart)
 					if err != nil {
-						return nil, errors.Wrap(err, "could not seek content part")
+						return nil, nil, errors.Wrap(err, "could not seek content part")
 					}
 				}
 				buf, err := io.ReadAll(part)
 				if err != nil {
-					return nil, errors.Wrap(err, "could not read content part")
+					return nil, nil, errors.Wrap(err, "could not read content part")
 				}
 				toolContent = string(buf)
 			}
@@ -260,11 +272,8 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 			}
 		}
 
-		if r.ThreadId != nil && !r.SkipSaveInput {
-			p.history.Save(r.ThreadId, msgParam)
-		}
-
 		messages = append(messages, msgParam)
+		turn = append(turn, msgParam)
 	}
 
 	// Build the complete MessageNewParams
@@ -329,7 +338,7 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		params.Thinking = anthropic.ThinkingConfigParamUnion{OfAdaptive: &adaptive}
 	}
 
-	return params, nil
+	return params, turn, nil
 }
 
 func adaptThinkingLevel(level llmberjack.ThinkingLevel) anthropic.OutputConfigEffort {

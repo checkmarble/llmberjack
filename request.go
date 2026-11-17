@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/checkmarble/llmberjack/internal"
 	"github.com/cockroachdb/errors"
@@ -193,7 +194,23 @@ func (r Request[T]) Do(ctx context.Context, llm *Llmberjack) (*Response[T], erro
 
 	resp, err := provider.ChatCompletion(ctx, llm, r)
 	if err != nil {
+		// The caller never gets the ID of a thread created by a failed
+		// request, so it could never close it: release it here, in case the
+		// provider saved anything before failing.
+		if r.createNewThread {
+			provider.CloseThread(r.ThreadId)
+		}
+
 		return nil, err
+	}
+
+	// Selecting a candidate commits it to the thread history. Make it
+	// idempotent, so a request built again from the same candidate (for
+	// example to retry a failed turn) does not add it to the history twice.
+	for idx := range resp.Candidates {
+		if selectCandidate := resp.Candidates[idx].SelectCandidate; selectCandidate != nil {
+			resp.Candidates[idx].SelectCandidate = sync.OnceFunc(selectCandidate)
+		}
 	}
 
 	return &Response[T]{

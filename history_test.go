@@ -71,3 +71,21 @@ func TestCopyCloseThread(t *testing.T) {
 	assert.Len(t, h.Load(t1), 2)
 	assert.Len(t, h.Load(t2), 1)
 }
+
+func TestSaveAllHistory(t *testing.T) {
+	type message struct {
+		Number int
+	}
+
+	h := History[message]{}
+	threadId := &ThreadId{}
+
+	h.SaveAll(threadId)
+
+	assert.Len(t, h.history, 0, "saving no message must not register the thread")
+
+	h.Save(threadId, message{1})
+	h.SaveAll(threadId, message{2}, message{3})
+
+	assert.Equal(t, []message{{1}, {2}, {3}}, h.Load(threadId))
+}

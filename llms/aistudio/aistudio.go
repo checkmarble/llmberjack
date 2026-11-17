@@ -94,7 +94,7 @@ func (p *AiStudio) ChatCompletion(ctx context.Context, llm internal.Adapter, req
 
 	opts := internal.CastProviderOptions[RequestOptions](requester.ProviderRequestOptions(p))
 
-	contents, cfg, err := p.adaptRequest(llm, requester, opts)
+	contents, cfg, turn, err := p.adaptRequest(llm, requester, opts)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not adapt request")
 	}
@@ -103,12 +103,30 @@ func (p *AiStudio) ChatCompletion(ctx context.Context, llm internal.Adapter, req
 		return nil, errors.Wrap(err, "LLM provider failed to generate content")
 	}
 
-	return p.adaptResponse(llm, response, requester)
+	resp, err := p.adaptResponse(llm, response, requester)
+	if err != nil {
+		return nil, err
+	}
+
+	// The input messages of this turn are only committed to the thread once
+	// the provider call succeeded, so a failed call can be retried in the same
+	// thread without duplicating them, and a failed first turn does not leave
+	// an orphan thread behind.
+	if r := requester.ToRequest(); r.ThreadId != nil && !r.SkipSaveInput {
+		p.history.SaveAll(r.ThreadId, turn...)
+	}
+
+	return resp, nil
 }
 
-func (p *AiStudio) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, opts RequestOptions) ([]*genai.Content, *genai.GenerateContentConfig, error) {
+// adaptRequest builds the provider request. Alongside the full contents sent
+// to the provider (thread history included), it returns the contents
+// specific to this turn, to be committed to the thread history if, and only
+// if, the request succeeds.
+func (p *AiStudio) adaptRequest(_ internal.Adapter, requester llmberjack.Requester, opts RequestOptions) ([]*genai.Content, *genai.GenerateContentConfig, []*genai.Content, error) {
 	r := requester.ToRequest()
 	contents := make([]*genai.Content, 0, len(r.Messages))
+	turn := make([]*genai.Content, 0, len(r.Messages))
 
 	if r.ThreadId != nil {
 		contents = append(contents, p.history.Load(r.ThreadId)...)
@@ -174,13 +192,13 @@ Messages:
 		for _, part := range msg.Parts {
 			if seeker, ok := part.(io.ReadSeeker); ok {
 				if _, err := seeker.Seek(0, io.SeekStart); err != nil {
-					return nil, nil, err
+					return nil, nil, nil, err
 				}
 			}
 
 			buf, err := io.ReadAll(part)
 			if err != nil {
-				return nil, nil, errors.Wrap(err, "could not read content part")
+				return nil, nil, nil, errors.Wrap(err, "could not read content part")
 			}
 
 			switch msg.Type {
@@ -198,7 +216,7 @@ Messages:
 			role = genai.RoleUser
 		case llmberjack.RoleTool:
 			if msg.Tool == nil {
-				return nil, nil, errors.New("sent a tool response when no tool was invoked")
+				return nil, nil, nil, errors.New("sent a tool response when no tool was invoked")
 			}
 
 			msg := &genai.Content{
@@ -215,10 +233,7 @@ Messages:
 			}
 
 			contents = append(contents, msg)
-
-			if r.ThreadId != nil && !r.SkipSaveInput {
-				p.history.Save(r.ThreadId, msg)
-			}
+			turn = append(turn, msg)
 
 			continue Messages
 		case llmberjack.RoleSystem:
@@ -229,10 +244,7 @@ Messages:
 			}
 
 			cfg.SystemInstruction.Parts = append(cfg.SystemInstruction.Parts, parts...)
-
-			if r.ThreadId != nil && !r.SkipSaveInput {
-				p.history.Save(r.ThreadId, cfg.SystemInstruction)
-			}
+			turn = append(turn, cfg.SystemInstruction)
 
 			continue Messages
 		}
@@ -242,14 +254,11 @@ Messages:
 			Parts: parts,
 		}
 
-		if r.ThreadId != nil && !r.SkipSaveInput {
-			p.history.Save(r.ThreadId, content)
-		}
-
 		contents = append(contents, content)
+		turn = append(turn, content)
 	}
 
-	return contents, &cfg, nil
+	return contents, &cfg, turn, nil
 }
 
 func adaptThinkingLevel(level llmberjack.ThinkingLevel) genai.ThinkingLevel {

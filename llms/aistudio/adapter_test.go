@@ -38,7 +38,7 @@ func TestRequestAdapter(t *testing.T) {
 		req := llmberjack.NewUntypedRequest().
 			WithModel("themodel")
 
-		contents, cfg, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
+		contents, cfg, _, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
 
 		assert.Nil(t, err)
 		assert.Nil(t, cfg.SystemInstruction)
@@ -51,7 +51,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithInstruction("system prompt", "system prompt 2").
 			WithInstructionReader(strings.NewReader("system prompt 3"))
 
-		contents, cfg, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
+		contents, cfg, _, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
 
 		assert.Nil(t, err)
 		assert.NotNil(t, cfg.SystemInstruction)
@@ -67,7 +67,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithText(llmberjack.RoleUser, "user prompt", "user prompt 2").
 			WithTextReader(llmberjack.RoleUser, strings.NewReader("user prompt 3"))
 
-		contents, _, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
+		contents, _, _, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
 
 		assert.Nil(t, err)
 		assert.Len(t, contents, 2)
@@ -96,7 +96,7 @@ func TestRequestAdapter(t *testing.T) {
 				})),
 			)
 
-		_, cfg, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
+		_, cfg, _, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
 
 		assert.Nil(t, err)
 		assert.Len(t, cfg.Tools, 2)
@@ -140,7 +140,7 @@ func TestRequestAdapter(t *testing.T) {
 
 		req := llmberjack.NewRequest[Format]()
 
-		_, cfg, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
+		_, cfg, _, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
 
 		assert.Nil(t, err)
 		assert.NotNil(t, cfg.ResponseJsonSchema)
@@ -164,7 +164,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithTemperature(0.1).
 			WithTopP(0.1)
 
-		_, cfg, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
+		_, cfg, _, err := p.adaptRequest(llm, req, lo.FromPtr[RequestOptions](nil))
 
 		assert.Nil(t, err)
 		assert.EqualValues(t, 10, cfg.CandidateCount)
@@ -180,7 +180,7 @@ func TestRequestAdapter(t *testing.T) {
 			TopK:         lo.ToPtr(0.2),
 		}
 
-		_, cfg, err := p.adaptRequest(llm, req, opts)
+		_, cfg, _, err := p.adaptRequest(llm, req, opts)
 
 		assert.Nil(t, err)
 

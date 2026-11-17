@@ -30,6 +30,27 @@ func (h *History[T]) Save(threadId *ThreadId, message T) {
 	h.history[threadId] = append(h.history[threadId], message)
 }
 
+// SaveAll atomically appends several messages to the conversation history.
+//
+// Providers use it to commit all the input messages of a turn at once, only
+// after the provider call succeeded, so a failed call leaves the history (and
+// the set of known threads) untouched. Calling it without any message is a
+// no-op and does not register the thread.
+func (h *History[T]) SaveAll(threadId *ThreadId, messages ...T) {
+	if len(messages) == 0 {
+		return
+	}
+
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	if h.history == nil {
+		h.history = make(map[*ThreadId][]T)
+	}
+
+	h.history[threadId] = append(h.history[threadId], messages...)
+}
+
 // Load retrieves the entire conversation history as a slice of messages.
 // This history can then be included in subsequent requests to the LLM
 // to maintain conversational context.

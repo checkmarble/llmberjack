@@ -17,7 +17,7 @@ func TestRequestAdapter(t *testing.T) {
 		req := llmberjack.NewUntypedRequest().
 			WithModel("themodel")
 
-		cfg, err := p.adaptRequest(llm, req)
+		cfg, _, err := p.adaptRequest(llm, req)
 
 		assert.Nil(t, err)
 		assert.Equal(t, "themodel", cfg.Model)
@@ -29,7 +29,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithInstruction("system prompt", "system prompt 2").
 			WithInstructionReader(strings.NewReader("system prompt 3"))
 
-		cfg, err := p.adaptRequest(llm, req)
+		cfg, _, err := p.adaptRequest(llm, req)
 
 		assert.Nil(t, err)
 		assert.Len(t, cfg.Messages, 2)
@@ -44,7 +44,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithText(llmberjack.RoleUser, "user prompt", "user prompt 2").
 			WithTextReader(llmberjack.RoleUser, strings.NewReader("user prompt 3"))
 
-		cfg, err := p.adaptRequest(llm, req)
+		cfg, _, err := p.adaptRequest(llm, req)
 
 		assert.Nil(t, err)
 		assert.Len(t, cfg.Messages, 2)
@@ -72,7 +72,7 @@ func TestRequestAdapter(t *testing.T) {
 				})),
 			)
 
-		cfg, err := p.adaptRequest(llm, req)
+		cfg, _, err := p.adaptRequest(llm, req)
 
 		assert.Nil(t, err)
 		assert.Len(t, cfg.Tools, 2)
@@ -113,7 +113,7 @@ func TestRequestAdapter(t *testing.T) {
 
 		req := llmberjack.NewRequest[Format]()
 
-		cfg, err := p.adaptRequest(llm, req)
+		cfg, _, err := p.adaptRequest(llm, req)
 
 		assert.Nil(t, err)
 		assert.NotNil(t, cfg.ResponseFormat.OfJSONSchema)
@@ -137,7 +137,7 @@ func TestRequestAdapter(t *testing.T) {
 			WithTemperature(0.1).
 			WithTopP(0.1)
 
-		cfg, err := p.adaptRequest(llm, req)
+		cfg, _, err := p.adaptRequest(llm, req)
 
 		assert.Nil(t, err)
 		assert.EqualValues(t, 10, cfg.N.Value)
