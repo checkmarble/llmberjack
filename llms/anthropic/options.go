@@ -10,7 +10,19 @@ const (
 	BackendAnthropic Backend = "anthropic"
 	BackendVertexAI  Backend = "vertexai"
 
-	BackendVertexAiDefaultMaxTokens = 4096
+	// DefaultMaxTokens is the output cap applied to requests that do not set MaxTokens.
+	//
+	// The Anthropic API requires max_tokens, and it counts thinking tokens, so a low
+	// value truncates answers when adaptive thinking is on. It is kept as high as the
+	// non-streaming path allows: this provider calls Messages.New without streaming,
+	// and the SDK (CalculateNonStreamingTimeout) refuses non-streaming requests whose
+	// expected duration, 1h * max_tokens / 128000, exceeds 10 minutes, that is above
+	// 21333 tokens. Callers needing more must set MaxTokens explicitly, which will
+	// require streaming support.
+	DefaultMaxTokens = 20000
+
+	// Deprecated: use DefaultMaxTokens, which now applies to every backend.
+	BackendVertexAiDefaultMaxTokens = DefaultMaxTokens
 )
 
 type Opt func(*Anthropic)

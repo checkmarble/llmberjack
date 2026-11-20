@@ -134,6 +134,39 @@ func TestBackendConfiguration(t *testing.T) {
 	})
 }
 
+func TestMaxTokens(t *testing.T) {
+	llm, _ := llmberjack.New()
+
+	backends := map[string]Backend{
+		"anthropic": BackendAnthropic,
+		"vertexai":  BackendVertexAI,
+	}
+
+	for name, backend := range backends {
+		p, _ := New(WithBackend(backend))
+
+		t.Run(name+" applies default when unset", func(t *testing.T) {
+			req := llmberjack.NewUntypedRequest().WithText(llmberjack.RoleUser, "prompt")
+
+			params, err := p.adaptRequest(llm, req, "claude-sonnet-5", RequestOptions{})
+
+			assert.Nil(t, err)
+			assert.Equal(t, int64(DefaultMaxTokens), params.MaxTokens)
+		})
+
+		t.Run(name+" keeps explicit value", func(t *testing.T) {
+			req := llmberjack.NewUntypedRequest().
+				WithText(llmberjack.RoleUser, "prompt").
+				WithMaxTokens(1234)
+
+			params, err := p.adaptRequest(llm, req, "claude-sonnet-5", RequestOptions{})
+
+			assert.Nil(t, err)
+			assert.Equal(t, int64(1234), params.MaxTokens)
+		})
+	}
+}
+
 func TestResponseUsage(t *testing.T) {
 	llm, _ := llmberjack.New()
 	p, _ := New()
