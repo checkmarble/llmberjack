@@ -317,11 +317,12 @@ func (p *Anthropic) adaptRequest(_ internal.Adapter, requester llmberjack.Reques
 		params.Tools = toolUnions
 	}
 
-	// Add max tokens only if explicitly provided (Vertex AI requires > 0)
+	// max_tokens is required by the API on every backend, so fall back to the default
+	// when the request does not set one.
 	if r.MaxTokens != nil {
 		params.MaxTokens = int64(*r.MaxTokens)
-	} else if p.backend == BackendVertexAI {
-		params.MaxTokens = BackendVertexAiDefaultMaxTokens
+	} else {
+		params.MaxTokens = DefaultMaxTokens
 	}
 
 	// Add temperature
